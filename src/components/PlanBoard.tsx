@@ -1,104 +1,68 @@
+// src/components/PlanBoard.tsx
 "use client";
 
 import { useMemo, useState } from "react";
-import type { PlanBlock, PlanColumn, Cell } from "@/data/planLayout";
+import type { PlanBlock, PlanColumn, Cell } from "../data/planLayout";
 import { useRouter } from "next/navigation";
 
-const CELL = 48; // largeur/hauteur d’une case en px (ajuste 44/48/52 selon tes goûts)
-const GAP = 8;   // écart entre cases
-
 function CellView({
-  cell,
-  isSelected,
-  isReserved,
-  onClick,
-}: {
-  cell: Cell;
-  isSelected: boolean;
-  isReserved: boolean;
-  onClick?: () => void;
-}) {
-  const base =
-    "flex h-10 items-center justify-center rounded-md border text-xs font-semibold select-none";
-  const w = { width: CELL, minWidth: CELL };
-
+  cell, isSelected, isReserved, onClick,
+}: { cell: Cell; isSelected: boolean; isReserved: boolean; onClick?: () => void; }) {
+  const base = "flex h-10 items-center justify-center rounded-md border text-sm font-semibold w-16 select-none";
   if (typeof cell === "string") {
     const cls = isReserved
       ? "bg-red-100/70 text-red-700 border-red-300 line-through cursor-not-allowed"
       : isSelected
-      ? "bg-emerald-600 text-white border-emerald-600 cursor-pointer"
-      : "bg-white hover:bg-emerald-50 text-neutral-800 border-neutral-300 hover:border-emerald-400 cursor-pointer";
+        ? "bg-emerald-600 text-white border-emerald-600 cursor-pointer"
+        : "bg-white hover:bg-emerald-50 text-neutral-800 border-neutral-300 hover:border-emerald-400 cursor-pointer";
     return (
-      <button type="button" onClick={onClick} className={`${base} ${cls}`} style={w} title={isReserved ? "Réservé" : "Libre"}>
+      <button type="button" onClick={onClick} className={`${base} ${cls}`} title={isReserved ? "Réservé" : "Libre"}>
         {cell}
       </button>
     );
   }
-
   if (cell.type === "label") {
-    return (
-      <div className={`${base} bg-neutral-100 text-neutral-600 border-neutral-200`} style={w}>
-        {cell.text}
-      </div>
-    );
+    return <div className={`${base} bg-neutral-100 text-neutral-700 border-neutral-200`}>{cell.text}</div>;
   }
-
   if (cell.type === "blocked") {
-    return (
-      <div className={`${base} bg-red-100/80 text-red-700 border-red-300 line-through`} style={w}>
-        {cell.text}
-      </div>
-    );
+    return <div className={`${base} bg-red-100/80 text-red-700 border-red-300 line-through`}>{cell.text}</div>;
   }
-
-  // spacer (case vide pour faire un couloir)
-  return <div style={{ width: CELL, height: 40 }} />;
+  return <div className="h-10 w-16" />; // spacer
 }
 
 export default function PlanBoard({
-  rows,
-  reserved,
-}: {
-  rows: PlanBlock[][];
-  reserved: string[];
-}) {
+  rows, reserved,
+}: { rows: PlanBlock[][]; reserved: string[]; }) {
   const router = useRouter();
-  const reservedSet = useMemo(() => new Set(reserved.map((s) => s.toUpperCase())), [reserved]);
+  const reservedSet = useMemo(() => new Set(reserved.map(s => s.toUpperCase())), [reserved]);
   const [sel, setSel] = useState<string[]>([]);
 
   function toggle(id: string) {
     id = id.toUpperCase();
     if (reservedSet.has(id)) return;
-    setSel((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+    setSel(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
   }
 
   return (
     <>
       {rows.map((blocks, ri) => (
-        <div key={ri} className="mt-6" style={{ display: "flex", flexWrap: "nowrap", gap: CELL }}>
+        <div key={ri} className="mt-8 flex flex-wrap items-start gap-10">
           {blocks.map((block, bi) => (
-            <section
-              key={bi}
-              style={{
-                marginLeft: (block.offset ?? 0) * (CELL + GAP), // <<< DECALAGE HORIZONTAL EN CELLULES
-                minWidth: block.minWidth ?? 0,
-              }}
-            >
+            <section key={bi} style={{ minWidth: block.minWidth ?? 0 }}>
               {block.title ? <h3 className="mb-2 text-sm font-semibold">{block.title}</h3> : null}
-
-              <div style={{ display: "flex", gap: GAP }}>
+              <div className="flex gap-4">
                 {block.columns.map((col: PlanColumn, ci: number) => (
-                  <ul key={ci} style={{ display: "flex", flexDirection: "column", gap: GAP }}>
+                  <ul key={ci} className="flex flex-col gap-2">
                     {col.map((cell, li) => {
                       const id = typeof cell === "string" ? cell : undefined;
-                      const isReserved = !!(id && reservedSet.has(id));
-                      const isSelected = !!(id && sel.includes(id));
+                      const isRes = !!(id && reservedSet.has(id));
+                      const isSel = !!(id && sel.includes(id));
                       return (
                         <li key={li}>
                           <CellView
                             cell={cell}
-                            isReserved={isReserved}
-                            isSelected={isSelected}
+                            isReserved={isRes}
+                            isSelected={isSel}
                             onClick={id ? () => toggle(id) : undefined}
                           />
                         </li>
