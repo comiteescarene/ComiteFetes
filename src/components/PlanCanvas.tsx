@@ -5,12 +5,12 @@ import { useMemo, useState } from "react";
 import type { PlanItem, PositionedMatrix, PositionedLabel, Cell } from "@/data/planCanvas";
 import { useRouter } from "next/navigation";
 
-const CELL_W = 48; // largeur d'une case (px)
-const CELL_H = 32; // hauteur d'une case (px)
-const GAP = 6;     // espace entre éléments
+const CELL_W = 48;  // largeur d'une case (px)
+const CELL_H = 32;  // hauteur
+const GAP    = 6;   // espacement
 
-function cellButtonBase() {
-  return "flex h-[36px] w-[56px] items-center justify-center rounded-md border text-sm font-semibold select-none";
+function cellBase() {
+  return "flex h-[32px] w-[48px] items-center justify-center rounded-md border text-sm font-semibold select-none";
 }
 
 function CellView({
@@ -23,17 +23,18 @@ function CellView({
         ? "bg-emerald-600 text-white border-emerald-600 cursor-pointer"
         : "bg-white hover:bg-emerald-50 text-neutral-800 border-neutral-300 hover:border-emerald-400 cursor-pointer";
     return (
-      <button type="button" className={`${cellButtonBase()} ${cls}`} onClick={onClick} title={isReserved ? "Réservé" : "Libre"}>
+      <button type="button" className={`${cellBase()} ${cls}`} onClick={onClick} title={isReserved ? "Réservé" : "Libre"}>
         {cell}
       </button>
     );
   }
   if (cell.type === "label") {
     const w = cell.w ?? 2;
+    const width = w*CELL_W + (w-1)*GAP;
     return (
       <div
         className="flex items-center justify-center rounded-md border border-neutral-200 bg-neutral-100 text-neutral-700 text-sm font-semibold"
-        style={{ width: w * CELL_W + (w - 1) * GAP, height: CELL_H }}
+        style={{ width, height: CELL_H }}
       >
         {cell.text}
       </div>
@@ -46,7 +47,7 @@ function MatrixBlock({ block, reservedSet, sel, toggle }: {
   block: PositionedMatrix; reservedSet: Set<string>;
   sel: string[]; toggle: (id: string) => void;
 }) {
-  const top = (block.y - 1) * (CELL_H + GAP);
+  const top  = (block.y - 1) * (CELL_H + GAP);
   const left = (block.x - 1) * (CELL_W + GAP);
 
   return (
@@ -78,7 +79,7 @@ function MatrixBlock({ block, reservedSet, sel, toggle }: {
 }
 
 function LabelBlock({ block }: { block: PositionedLabel }) {
-  const top = (block.y - 1) * (CELL_H + GAP);
+  const top  = (block.y - 1) * (CELL_H + GAP);
   const left = (block.x - 1) * (CELL_W + GAP);
   return (
     <div className="absolute" style={{ top, left }}>
@@ -87,9 +88,7 @@ function LabelBlock({ block }: { block: PositionedLabel }) {
   );
 }
 
-export default function PlanCanvas({
-  items, reserved,
-}: { items: PlanItem[]; reserved: string[] }) {
+export default function PlanCanvas({ items, reserved }: { items: PlanItem[]; reserved: string[] }) {
   const router = useRouter();
   const reservedSet = useMemo(() => new Set(reserved.map(s => s.toUpperCase())), [reserved]);
   const [sel, setSel] = useState<string[]>([]);
@@ -100,13 +99,9 @@ export default function PlanCanvas({
     setSel(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
   }
 
-  // Dimensions auto : trouve la plus grande X/Y pour étendre le canevas
   const maxX = useMemo(() => {
-    let m = 30;
-    for (const it of items) {
-      if (it.type === "matrix") m = Math.max(m, it.x + it.columns.length + 2);
-      else m = Math.max(m, it.x + it.w + 1);
-    }
+    let m = 35;
+    for (const it of items) m = Math.max(m, (it.type === "matrix") ? it.x + it.columns.length + 2 : it.x + it.w + 1);
     return m;
   }, [items]);
 
@@ -126,7 +121,7 @@ export default function PlanCanvas({
       <div
         className="relative rounded-xl border bg-white p-4"
         style={{
-          width: maxX * (CELL_W + GAP),
+          width:  maxX * (CELL_W + GAP),
           height: maxY * (CELL_H + GAP),
           minWidth: "100%",
           overflow: "auto",
