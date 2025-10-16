@@ -12,6 +12,6 @@ export async function POST(req: Request) {
   // Revalider la page (et/ou des tags si tu en utilises)
   revalidatePath("/videgrenier");
   // revalidateTag("reservations-2025");
-
-  return NextResponse.json({ ok: true, revalidated: true });
+  
+  return NextResponse.json({ revalidated: true });
 }

@@ -2,31 +2,39 @@ import { NextResponse } from "next/server";
 import { sanityClient, sanityWriteClient } from "../../../../sanity/client";
 import { groq } from "next-sanity";
 
+type ReservationBody = {
+  year?: string;
+  places?: string[];
+  nom: string;
+  prenom: string;
+  tel: string;
+  email: string;
+  escarenois?: boolean | "oui" | "non";
+};
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const year = body.year || "2025";
-    const places: string[] = (body.places || []).map((s: string) => String(s).toUpperCase());
+    const body = (await req.json()) as ReservationBody;
 
-    if (!Array.isArray(places) || places.length === 0) {
-      return NextResponse.json({ error: "Aucune place sélectionnée." }, { status: 400 });
-    }
+    const year = body.year ?? "2025";
+    const places = (body.places ?? []).map((s) => s.toUpperCase());
 
-    // 1) Conflits
+    // 1) conflits
     const q = groq`*[_type=="reservation" && year==$year && status in ["pending","confirmed"]].places[]`;
-    const taken: string[] = await sanityClient.fetch(q, { year });
-    const takenSet = new Set((taken || []).map(s => String(s).toUpperCase()));
-    const conflicts = places.filter(p => takenSet.has(p));
+    const taken = (await sanityClient.fetch<string[]>(q, { year })) ?? [];
+    const takenSet = new Set(taken.map((s) => s.toUpperCase()));
+    const conflicts = places.filter((p) => takenSet.has(p));
     if (conflicts.length) {
       return NextResponse.json({ conflicts }, { status: 409 });
     }
 
-    // 2) Total
-    const esc = body.escarenois === "oui" || body.escarenois === true;
+    // 2) total
+    const esc =
+      body.escarenois === true || body.escarenois === "oui" ? true : false;
     const per = esc ? 5 : 10;
     const total = per * Math.max(1, places.length);
 
-    // 3) Création Sanity
+    // 3) create
     const doc = await sanityWriteClient.create({
       _type: "reservation",
       year,
@@ -39,29 +47,11 @@ export async function POST(req: Request) {
       places,
       count: places.length,
       total,
-      createdAt: new Date().toISOString(),
     });
 
-    return NextResponse.json({ ok: true, id: doc._id }, { status: 200 });
-  } catch (e: any) {
-    console.error("POST /api/reservations error:", e);
-    const message =
-      e?.response?.body?.error?.description ||
-      e?.message ||
-      "Erreur serveur";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
-  }
-}
-
-// (optionnel) GET pour récupérer la liste des places déjà prises
-export async function GET() {
-  try {
-    const year = "2025";
-    const q = groq`array::unique(*[_type=="reservation" && year==$year && status in ["pending","confirmed"]].places[])`;
-    const ids: string[] = await sanityClient.fetch(q, { year });
-    return NextResponse.json({ ids: ids?.map(s => String(s).toUpperCase()) ?? [] });
-  } catch (e: any) {
-    console.error("GET /api/reservations error:", e);
-    return NextResponse.json({ ids: [] }, { status: 200 });
+    return NextResponse.json({ ok: true, id: doc._id });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

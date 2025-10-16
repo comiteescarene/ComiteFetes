@@ -1,70 +1,104 @@
 "use client";
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import type { PlanItem, PositionedLabel, PositionedMatrix, Cell } from "@/data/planCanvas";
+import type { KeyboardEvent } from "react";
+import type {
+  PlanItem,
+  PositionedLabel,
+  PositionedMatrix,
+} from "@/data/planCanvas";
 import { PLAN_ITEMS } from "@/data/planCanvas";
 import clsx from "clsx";
 
 type Props = {
   /** Identifiants déjà réservés (ex: "B3", "C10", "F14") */
   reservedIds?: Set<string> | string[];
-  /** Soumission de la sélection */
+  /** Callback à la soumission de la sélection */
   onSubmit?: (ids: string[]) => void;
 };
 
 const CELL = 36; // taille d'une case en px
-const GAP  = 8;  // espacement en px
+const GAP = 8; // espacement en px
 const MAX_COLS = 36; // marge large pour la grille
 const MAX_ROWS = 48;
 
+/** Flèches autorisées pour la navigation clavier */
+type ArrowKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
+
+const DIR: Record<ArrowKey, readonly [dx: number, dy: number]> = {
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+};
+const isArrowKey = (k: string): k is ArrowKey => k in DIR;
+
 export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
-  // normaliser reservedIds en Set
-  const reserved = useMemo(
-    () => new Set(Array.isArray(reservedIds) ? reservedIds : reservedIds ? Array.from(reservedIds) : []),
-    [reservedIds]
-  );
+  // normaliser reservedIds en Set MAJUSCULE
+  const reserved = useMemo(() => {
+    const arr = Array.isArray(reservedIds)
+      ? reservedIds
+      : reservedIds
+      ? Array.from(reservedIds)
+      : [];
+    return new Set(arr.map((s) => s.toUpperCase()));
+  }, [reservedIds]);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [scale, setScale]       = useState(1); // zoom
-  const regionRef               = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1); // zoom
+  const regionRef = useRef<HTMLDivElement | null>(null);
 
   // annonce ARIA du nombre de places sélectionnées
   const [ariaMessage, setAriaMessage] = useState("");
   useEffect(() => {
     const n = selected.size;
-    setAriaMessage(n === 0 ? "Aucune place sélectionnée" : `${n} place${n > 1 ? "s" : ""} sélectionnée${n > 1 ? "s" : ""}`);
+    setAriaMessage(
+      n === 0
+        ? "Aucune place sélectionnée"
+        : `${n} place${n > 1 ? "s" : ""} sélectionnée${n > 1 ? "s" : ""}`
+    );
   }, [selected]);
 
   const toggle = (id: string) => {
-    if (reserved.has(id)) return;
-    setSelected(prev => {
+    const up = id.toUpperCase();
+    if (reserved.has(up)) return;
+    setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.has(up) ? next.delete(up) : next.add(up);
       return next;
     });
   };
 
-  const clear = () => setSelected(new Set());
-  const zoomIn  = () => setScale(s => Math.min(1.6, +(s + 0.1).toFixed(2)));
-  const zoomOut = () => setScale(s => Math.max(0.8, +(s - 0.1).toFixed(2)));
+  const clear = () => setSelected(new Set<string>());
+  const zoomIn = () => setScale((s) => Math.min(1.6, +(s + 0.1).toFixed(2)));
+  const zoomOut = () => setScale((s) => Math.max(0.8, +(s - 0.1).toFixed(2)));
   const zoomReset = () => setScale(1);
 
   const handleSubmit = () => onSubmit?.(Array.from(selected));
 
   // navigation clavier basique (flèches) : on mémorise le dernier focus
   const lastFocus = useRef<HTMLButtonElement | null>(null);
-  const onCellKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, x: number, y: number) => {
+
+  // helper : retrouver un bouton à une coordonnée (x,y)
+  const getButtonAt = (nx: number, ny: number): HTMLButtonElement | null => {
+    return (
+      regionRef.current?.querySelector<HTMLButtonElement>(
+        `button[data-x="${nx}"][data-y="${ny}"]`
+      ) ?? null
+    );
+  };
+
+  const onCellKeyDown = (
+    e: KeyboardEvent<HTMLButtonElement>,
+    x: number,
+    y: number
+  ) => {
     if (!regionRef.current) return;
-    const dir = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] } as const;
-    const mov = (dir as any)[e.key];
-    if (!mov) return;
+    if (!isArrowKey(e.key)) return;
 
     e.preventDefault();
-    const [dx, dy] = mov;
-    // on cherche le prochain button [data-x][data-y] dans la direction
-    const next = regionRef.current.querySelector<HTMLButtonElement>(
-      `button[data-x="${x + dx}"][data-y="${y + dy}"]`
-    );
+    const [dx, dy] = DIR[e.key];
+    const next = getButtonAt(x + dx, y + dy);
     if (next) {
       next.focus();
       lastFocus.current = next;
@@ -77,18 +111,30 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <Legend />
         <div className="flex items-center gap-1">
-          <button onClick={zoomOut} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">−</button>
-          <button onClick={zoomReset} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">100%</button>
-          <button onClick={zoomIn} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">+</button>
+          <button
+            onClick={zoomOut}
+            className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50"
+          >
+            −
+          </button>
+          <button
+            onClick={zoomReset}
+            className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50"
+          >
+            100%
+          </button>
+          <button
+            onClick={zoomIn}
+            className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50"
+          >
+            +
+          </button>
         </div>
       </div>
 
       {/* Zone scrollable + zoom */}
       <div className="relative max-h-[70vh] overflow-auto rounded-2xl border bg-white/60 p-4 shadow-sm">
-        <div
-          className="origin-top-left"
-          style={{ transform: `scale(${scale})` }}
-        >
+        <div className="origin-top-left" style={{ transform: `scale(${scale})` }}>
           {/* Grille CSS (colonnes/lignes) */}
           <div
             ref={regionRef}
@@ -156,7 +202,9 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
             >
               Tout effacer
             </button>
-            <span className="sr-only" aria-live="polite">{ariaMessage}</span>
+            <span className="sr-only" aria-live="polite">
+              {ariaMessage}
+            </span>
           </div>
 
           <button
@@ -165,7 +213,7 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
             className={clsx(
               "rounded-lg px-4 py-2 text-sm font-medium shadow-sm",
               selected.size === 0
-                ? "bg-emerald-600/40 text-white/70 cursor-not-allowed"
+                ? "cursor-not-allowed bg-emerald-600/40 text-white/70"
                 : "bg-emerald-600 text-white hover:bg-emerald-700"
             )}
           >
@@ -186,10 +234,12 @@ function Legend() {
         <span className="inline-block h-4 w-6 rounded-md border bg-white" /> Libre
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="inline-block h-4 w-6 rounded-md border bg-neutral-200" /> Occupé
+        <span className="inline-block h-4 w-6 rounded-md border bg-neutral-200" />{" "}
+        Occupé
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="inline-block h-4 w-6 rounded-md border bg-emerald-600" /> Ma sélection
+        <span className="inline-block h-4 w-6 rounded-md border bg-emerald-600" />{" "}
+        Ma sélection
       </span>
     </div>
   );
@@ -206,7 +256,11 @@ function Matrix({
   reserved: Set<string>;
   selected: Set<string>;
   onToggle: (id: string) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>, x: number, y: number) => void;
+  onKeyDown: (
+    e: KeyboardEvent<HTMLButtonElement>,
+    x: number,
+    y: number
+  ) => void;
 }) {
   const x0 = mat.x;
   const y0 = mat.y;
@@ -239,8 +293,9 @@ function Matrix({
               {col.map((cell, ri) => {
                 const x = x0 + ci;
                 const y = y0 + ri;
+
                 if (typeof cell !== "string") {
-                  // label dans une matrice (rare), on l'affiche non cliquable
+                  // label dans une matrice (rare), non cliquable
                   const c = cell as { type: "label"; text: string };
                   return (
                     <div
@@ -252,9 +307,10 @@ function Matrix({
                     </div>
                   );
                 }
-                const id = cell as string;
-                const isReserved  = reserved.has(id);
-                const isSelected  = selected.has(id);
+
+                const id = cell.toUpperCase();
+                const isReserved = reserved.has(id);
+                const isSelected = selected.has(id);
 
                 return (
                   <button
