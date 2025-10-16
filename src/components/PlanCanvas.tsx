@@ -1,153 +1,298 @@
-// src/components/PlanCanvas.tsx
 "use client";
 
-import { useMemo, useState } from "react";
-import type { PlanItem, PositionedMatrix, PositionedLabel, Cell } from "@/data/planCanvas";
-import { useRouter } from "next/navigation";
+import { useMemo, useState, useRef, useEffect } from "react";
+import type { PlanItem, PositionedLabel, PositionedMatrix, Cell } from "@/data/planCanvas";
+import { PLAN_ITEMS } from "@/data/planCanvas";
+import clsx from "clsx";
 
-const CELL_W = 48;  // largeur d'une case (px)
-const CELL_H = 32;  // hauteur
-const GAP    = 6;   // espacement
+type Props = {
+  /** Identifiants déjà réservés (ex: "B3", "C10", "F14") */
+  reservedIds?: Set<string> | string[];
+  /** Soumission de la sélection */
+  onSubmit?: (ids: string[]) => void;
+};
 
-function cellBase() {
-  return "flex h-[32px] w-[48px] items-center justify-center rounded-md border text-sm font-semibold select-none";
-}
+const CELL = 36; // taille d'une case en px
+const GAP  = 8;  // espacement en px
+const MAX_COLS = 36; // marge large pour la grille
+const MAX_ROWS = 48;
 
-function CellView({
-  cell, isSelected, isReserved, onClick,
-}: { cell: Cell; isSelected: boolean; isReserved: boolean; onClick?: () => void }) {
-  if (typeof cell === "string") {
-    const cls = isReserved
-      ? "bg-red-100/70 text-red-700 border-red-300 line-through cursor-not-allowed"
-      : isSelected
-        ? "bg-emerald-600 text-white border-emerald-600 cursor-pointer"
-        : "bg-white hover:bg-emerald-50 text-neutral-800 border-neutral-300 hover:border-emerald-400 cursor-pointer";
-    return (
-      <button type="button" className={`${cellBase()} ${cls}`} onClick={onClick} title={isReserved ? "Réservé" : "Libre"}>
-        {cell}
-      </button>
+export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
+  // normaliser reservedIds en Set
+  const reserved = useMemo(
+    () => new Set(Array.isArray(reservedIds) ? reservedIds : reservedIds ? Array.from(reservedIds) : []),
+    [reservedIds]
+  );
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [scale, setScale]       = useState(1); // zoom
+  const regionRef               = useRef<HTMLDivElement>(null);
+
+  // annonce ARIA du nombre de places sélectionnées
+  const [ariaMessage, setAriaMessage] = useState("");
+  useEffect(() => {
+    const n = selected.size;
+    setAriaMessage(n === 0 ? "Aucune place sélectionnée" : `${n} place${n > 1 ? "s" : ""} sélectionnée${n > 1 ? "s" : ""}`);
+  }, [selected]);
+
+  const toggle = (id: string) => {
+    if (reserved.has(id)) return;
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const clear = () => setSelected(new Set());
+  const zoomIn  = () => setScale(s => Math.min(1.6, +(s + 0.1).toFixed(2)));
+  const zoomOut = () => setScale(s => Math.max(0.8, +(s - 0.1).toFixed(2)));
+  const zoomReset = () => setScale(1);
+
+  const handleSubmit = () => onSubmit?.(Array.from(selected));
+
+  // navigation clavier basique (flèches) : on mémorise le dernier focus
+  const lastFocus = useRef<HTMLButtonElement | null>(null);
+  const onCellKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, x: number, y: number) => {
+    if (!regionRef.current) return;
+    const dir = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] } as const;
+    const mov = (dir as any)[e.key];
+    if (!mov) return;
+
+    e.preventDefault();
+    const [dx, dy] = mov;
+    // on cherche le prochain button [data-x][data-y] dans la direction
+    const next = regionRef.current.querySelector<HTMLButtonElement>(
+      `button[data-x="${x + dx}"][data-y="${y + dy}"]`
     );
-  }
-  if (cell.type === "label") {
-    const w = cell.w ?? 2;
-    const width = w*CELL_W + (w-1)*GAP;
-    return (
-      <div
-        className="flex items-center justify-center rounded-md border border-neutral-200 bg-neutral-100 text-neutral-700 text-sm font-semibold"
-        style={{ width, height: CELL_H }}
-      >
-        {cell.text}
-      </div>
-    );
-  }
-  return null;
-}
-
-function MatrixBlock({ block, reservedSet, sel, toggle }: {
-  block: PositionedMatrix; reservedSet: Set<string>;
-  sel: string[]; toggle: (id: string) => void;
-}) {
-  const top  = (block.y - 1) * (CELL_H + GAP);
-  const left = (block.x - 1) * (CELL_W + GAP);
+    if (next) {
+      next.focus();
+      lastFocus.current = next;
+    }
+  };
 
   return (
-    <section className="absolute" style={{ top, left }}>
-      {block.title ? <h3 className="mb-2 text-xs font-semibold text-neutral-600">{block.title}</h3> : null}
-      <div className="flex gap-2">
-        {block.columns.map((col, ci) => (
-          <ul key={ci} className="flex flex-col gap-2">
-            {col.map((cell, li) => {
-              const id = typeof cell === "string" ? cell.toUpperCase() : undefined;
-              const isRes = !!(id && reservedSet.has(id));
-              const isSel = !!(id && sel.includes(id));
+    <div className="relative">
+      {/* Légende + outils */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <Legend />
+        <div className="flex items-center gap-1">
+          <button onClick={zoomOut} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">−</button>
+          <button onClick={zoomReset} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">100%</button>
+          <button onClick={zoomIn} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">+</button>
+        </div>
+      </div>
+
+      {/* Zone scrollable + zoom */}
+      <div className="relative max-h-[70vh] overflow-auto rounded-2xl border bg-white/60 p-4 shadow-sm">
+        <div
+          className="origin-top-left"
+          style={{ transform: `scale(${scale})` }}
+        >
+          {/* Grille CSS (colonnes/lignes) */}
+          <div
+            ref={regionRef}
+            role="grid"
+            aria-label="Plan des emplacements"
+            className="relative"
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${MAX_COLS}, ${CELL}px)`,
+              gridTemplateRows: `repeat(${MAX_ROWS}, ${CELL}px)`,
+              gap: `${GAP}px`,
+              // fond “papier millimétré” discret
+              backgroundImage:
+                "linear-gradient(to right, rgba(0,0,0,.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,.03) 1px, transparent 1px)",
+              backgroundSize: `${CELL + GAP}px ${CELL + GAP}px`,
+            }}
+          >
+            {PLAN_ITEMS.map((item, idx) => {
+              if (item.type === "label") {
+                const lab = item as PositionedLabel;
+                return (
+                  <div
+                    key={`label-${idx}-${lab.x}-${lab.y}`}
+                    className="pointer-events-none select-none rounded-xl border bg-neutral-100/80 text-center text-xs italic text-neutral-600"
+                    style={{
+                      gridColumnStart: lab.x,
+                      gridRowStart: lab.y,
+                      gridColumnEnd: `span ${lab.w}`,
+                      gridRowEnd: "span 1",
+                      padding: 6,
+                    }}
+                  >
+                    {lab.text}
+                  </div>
+                );
+              }
+
+              const mat = item as PositionedMatrix;
               return (
-                <li key={li}>
-                  <CellView
-                    cell={cell}
-                    isReserved={isRes}
-                    isSelected={isSel}
-                    onClick={id ? () => toggle(id) : undefined}
-                  />
-                </li>
+                <Matrix
+                  key={`matrix-${idx}-${mat.x}-${mat.y}`}
+                  mat={mat}
+                  reserved={reserved}
+                  selected={selected}
+                  onToggle={toggle}
+                  onKeyDown={onCellKeyDown}
+                />
               );
             })}
-          </ul>
-        ))}
+          </div>
+        </div>
       </div>
-    </section>
-  );
-}
 
-function LabelBlock({ block }: { block: PositionedLabel }) {
-  const top  = (block.y - 1) * (CELL_H + GAP);
-  const left = (block.x - 1) * (CELL_W + GAP);
-  return (
-    <div className="absolute" style={{ top, left }}>
-      <CellView cell={{ type: "label", text: block.text, w: block.w }} isSelected={false} isReserved={false} />
+      {/* Barre sticky d’action */}
+      <div className="sticky bottom-3 mt-4">
+        <div className="flex items-center justify-between rounded-2xl border bg-white/80 px-3 py-2 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-2 text-sm text-neutral-700">
+            <span className="inline-flex items-center rounded-md border px-2 py-1 text-xs">
+              {selected.size} sélectionnée{selected.size > 1 ? "s" : ""}
+            </span>
+            <button
+              onClick={clear}
+              disabled={selected.size === 0}
+              className="rounded-md border px-3 py-1 text-sm hover:bg-neutral-50 disabled:opacity-40"
+            >
+              Tout effacer
+            </button>
+            <span className="sr-only" aria-live="polite">{ariaMessage}</span>
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={selected.size === 0}
+            className={clsx(
+              "rounded-lg px-4 py-2 text-sm font-medium shadow-sm",
+              selected.size === 0
+                ? "bg-emerald-600/40 text-white/70 cursor-not-allowed"
+                : "bg-emerald-600 text-white hover:bg-emerald-700"
+            )}
+          >
+            Réserver {selected.size > 0 ? `(${selected.size})` : ""}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default function PlanCanvas({ items, reserved }: { items: PlanItem[]; reserved: string[] }) {
-  const router = useRouter();
-  const reservedSet = useMemo(() => new Set(reserved.map(s => s.toUpperCase())), [reserved]);
-  const [sel, setSel] = useState<string[]>([]);
+/* ----------- Sous-composants ----------- */
 
-  function toggle(id: string) {
-    id = id.toUpperCase();
-    if (reservedSet.has(id)) return;
-    setSel(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
-  }
+function Legend() {
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <span className="inline-flex items-center gap-2">
+        <span className="inline-block h-4 w-6 rounded-md border bg-white" /> Libre
+      </span>
+      <span className="inline-flex items-center gap-2">
+        <span className="inline-block h-4 w-6 rounded-md border bg-neutral-200" /> Occupé
+      </span>
+      <span className="inline-flex items-center gap-2">
+        <span className="inline-block h-4 w-6 rounded-md border bg-emerald-600" /> Ma sélection
+      </span>
+    </div>
+  );
+}
 
-  const maxX = useMemo(() => {
-    let m = 35;
-    for (const it of items) m = Math.max(m, (it.type === "matrix") ? it.x + it.columns.length + 2 : it.x + it.w + 1);
-    return m;
-  }, [items]);
-
-  const maxY = useMemo(() => {
-    let m = 50;
-    for (const it of items) {
-      if (it.type === "matrix") {
-        const h = Math.max(...it.columns.map(c => c.length));
-        m = Math.max(m, it.y + h + 2);
-      } else m = Math.max(m, it.y + 2);
-    }
-    return m;
-  }, [items]);
+function Matrix({
+  mat,
+  reserved,
+  selected,
+  onToggle,
+  onKeyDown,
+}: {
+  mat: PositionedMatrix;
+  reserved: Set<string>;
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>, x: number, y: number) => void;
+}) {
+  const x0 = mat.x;
+  const y0 = mat.y;
 
   return (
-    <>
+    <div
+      style={{
+        gridColumnStart: x0,
+        gridRowStart: y0,
+        gridColumnEnd: `span ${mat.columns.length}`,
+      }}
+    >
       <div
-        className="relative rounded-xl border bg-white p-4"
+        className="grid"
         style={{
-          width:  maxX * (CELL_W + GAP),
-          height: maxY * (CELL_H + GAP),
-          minWidth: "100%",
-          overflow: "auto",
+          gridTemplateColumns: `repeat(${mat.columns.length}, ${CELL}px)`,
+          gap: `${GAP}px`,
         }}
       >
-        {items.map((it, idx) =>
-          it.type === "matrix" ? (
-            <MatrixBlock key={idx} block={it} reservedSet={reservedSet} sel={sel} toggle={toggle} />
-          ) : (
-            <LabelBlock key={idx} block={it} />
-          )
-        )}
-      </div>
+        {mat.columns.map((col, ci) => {
+          return (
+            <div
+              key={`col-${ci}`}
+              className="grid"
+              style={{
+                gridTemplateRows: `repeat(${col.length}, ${CELL}px)`,
+                gap: `${GAP}px`,
+              }}
+            >
+              {col.map((cell, ri) => {
+                const x = x0 + ci;
+                const y = y0 + ri;
+                if (typeof cell !== "string") {
+                  // label dans une matrice (rare), on l'affiche non cliquable
+                  const c = cell as { type: "label"; text: string };
+                  return (
+                    <div
+                      key={`lab-${ci}-${ri}`}
+                      className="pointer-events-none select-none rounded-lg border bg-neutral-100/80 text-center text-xs italic text-neutral-600"
+                      style={{ lineHeight: `${CELL - 8}px` }}
+                    >
+                      {c.text}
+                    </div>
+                  );
+                }
+                const id = cell as string;
+                const isReserved  = reserved.has(id);
+                const isSelected  = selected.has(id);
 
-      <div className="sticky bottom-4 z-10 mt-4 flex items-center justify-between rounded-xl border bg-white/90 p-3 shadow-lg backdrop-blur">
-        <div className="text-sm">
-          Sélection : {sel.length ? <b>{sel.join(", ")}</b> : "aucune"}
-        </div>
-        <button
-          onClick={() => sel.length && router.push(`/reserver?places=${encodeURIComponent(sel.join(","))}`)}
-          disabled={!sel.length}
-          className="rounded-xl bg-emerald-600 px-5 py-2 font-semibold text-white disabled:opacity-60"
-        >
-          Réserver {sel.length ? `${sel.length} emplacement(s)` : ""}
-        </button>
+                return (
+                  <button
+                    key={`cell-${ci}-${ri}-${id}`}
+                    data-x={x}
+                    data-y={y}
+                    type="button"
+                    title={isReserved ? `${id} — Occupé` : `${id} — Libre`}
+                    aria-pressed={isSelected}
+                    aria-disabled={isReserved}
+                    disabled={isReserved}
+                    onClick={() => onToggle(id)}
+                    onKeyDown={(e) => onKeyDown(e, x, y)}
+                    className={clsx(
+                      "rounded-lg border text-sm leading-none shadow-sm outline-none transition",
+                      "focus-visible:ring-2 focus-visible:ring-emerald-500",
+                      isReserved
+                        ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+                        : isSelected
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-white text-neutral-800 hover:bg-emerald-50"
+                    )}
+                    style={{
+                      width: CELL,
+                      height: CELL,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {id}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
-    </>
+    </div>
   );
 }
