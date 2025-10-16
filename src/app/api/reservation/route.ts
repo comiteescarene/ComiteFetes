@@ -2,26 +2,26 @@ import { NextResponse } from "next/server";
 import { sanityClient, sanityWriteClient } from "../../../../sanity/client";
 import { groq } from "next-sanity";
 
-type ReservationBody = {
+type ReservationPayload = {
   year?: string;
   places?: string[];
+  escarenois?: boolean | "oui" | "non";
   nom: string;
   prenom: string;
   tel: string;
   email: string;
-  escarenois?: boolean | "oui" | "non";
 };
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as ReservationBody;
+    const body = (await req.json()) as ReservationPayload;
 
     const year = body.year ?? "2025";
-    const places = (body.places ?? []).map((s) => s.toUpperCase());
+    const places = (body.places ?? []).map((s) => String(s).toUpperCase());
 
     // 1) conflits
     const q = groq`*[_type=="reservation" && year==$year && status in ["pending","confirmed"]].places[]`;
-    const taken = (await sanityClient.fetch<string[]>(q, { year })) ?? [];
+    const taken: string[] = await sanityClient.fetch(q, { year });
     const takenSet = new Set(taken.map((s) => s.toUpperCase()));
     const conflicts = places.filter((p) => takenSet.has(p));
     if (conflicts.length) {
