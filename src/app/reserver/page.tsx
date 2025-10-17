@@ -1,72 +1,121 @@
 "use client";
+
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-const TARIF_ESC = 5;
-const TARIF_EXT = 10;
+type ReservationBody = {
+  nom: string;
+  prenom: string;
+  tel: string;
+  email: string;
+  escarenois: boolean;
+  year: string;         // "2025"
+  places: string[];     // ex: ["H1","G1"]
+};
 
-export default function Reserver() {
+export default function ReserverPage() {
   const sp = useSearchParams();
-  const places = (sp.get("places") || "").split(",").filter(Boolean);
-  const [esc, setEsc] = useState("oui");
-  const price = useMemo(() =>
-    (esc==="oui" ? TARIF_ESC : TARIF_EXT) * Math.max(1, places.length), [esc, places.length]
+
+  // ex: /reserver?ids=H1,G1
+  const places = useMemo(
+    () =>
+      (sp.get("ids") ?? "")
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean),
+    [sp]
   );
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     const fd = new FormData(e.currentTarget);
-    const payload = Object.fromEntries(fd.entries());
-    payload.places = places;
-    payload.year   = "2025";
+    const raw = Object.fromEntries(fd.entries()) as Record<
+      string,
+      FormDataEntryValue
+    >;
+
+    // Construire un vrai payload JSON typé
+    const body: ReservationBody = {
+      nom: String(raw.nom ?? ""),
+      prenom: String(raw.prenom ?? ""),
+      tel: String(raw.tel ?? ""),
+      email: String(raw.email ?? ""),
+      escarenois: String(raw.escarenois ?? "non") === "oui",
+      year: "2025",
+      places,
+    };
+
     const res = await fetch("/api/reservations", {
       method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-    if (res.status === 409) {
-      const data = await res.json();
-      alert("Désolé, ces places ne sont plus disponibles : " + data.conflicts.join(", "));
+
+    if (!res.ok) {
+      alert("Erreur lors de l’enregistrement. Réessayez.");
       return;
     }
-    if (!res.ok) { alert("Erreur. Réessaie plus tard."); return; }
-    alert("Demande envoyée ! Nous revenons vers vous par email.");
-    window.location.href = "/videgrenier";
-  }
+
+    const data = await res.json();
+    // TODO: rediriger / afficher succès
+    alert(`Réservation enregistrée. Id: ${data.id ?? "?"}`);
+  };
 
   return (
-    <main className="max-w-2xl">
-      <h1 className="text-2xl font-bold">Réserver {places.length} emplacement(s)</h1>
-      <p className="mt-2 text-neutral-600">Sélection : {places.join(", ")}</p>
+    <main className="mx-auto max-w-3xl px-4 py-8">
+      <h1 className="text-2xl font-bold">Finaliser la réservation</h1>
+      <p className="mt-1 text-neutral-600">
+        Places choisies : {places.length ? places.join(", ") : "aucune"}
+      </p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div><label className="block text-sm font-medium">Nom</label>
-            <input name="nom" required className="mt-1 w-full rounded-lg border px-3 py-2" /></div>
-          <div><label className="block text-sm font-medium">Prénom</label>
-            <input name="prenom" required className="mt-1 w-full rounded-lg border px-3 py-2" /></div>
+          <label className="block">
+            <span className="text-sm">Nom</span>
+            <input name="nom" required className="mt-1 w-full rounded-lg border px-3 py-2" />
+          </label>
+          <label className="block">
+            <span className="text-sm">Prénom</span>
+            <input name="prenom" required className="mt-1 w-full rounded-lg border px-3 py-2" />
+          </label>
         </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
-          <div><label className="block text-sm font-medium">Téléphone</label>
-            <input name="tel" className="mt-1 w-full rounded-lg border px-3 py-2" /></div>
-          <div><label className="block text-sm font-medium">Email</label>
-            <input type="email" name="email" required className="mt-1 w-full rounded-lg border px-3 py-2" /></div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Escarénois ?</label>
-          <select name="escarenois" value={esc} onChange={(e)=>setEsc(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2">
-            <option value="oui">Oui</option><option value="non">Non</option>
-          </select>
-        </div>
-
-        <div className="rounded-lg border p-3 text-sm">
-          Total estimé : <b>{price} €</b> ({esc==="oui" ? TARIF_ESC : TARIF_EXT} €/place)
+          <label className="block">
+            <span className="text-sm">Téléphone</span>
+            <input name="tel" required className="mt-1 w-full rounded-lg border px-3 py-2" />
+          </label>
+          <label className="block">
+            <span className="text-sm">Email</span>
+            <input
+              name="email"
+              type="email"
+              required
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
         </div>
 
-        <button className="rounded-xl bg-emerald-600 px-5 py-2 font-semibold text-white">
-          Envoyer la demande
-        </button>
+        <fieldset className="mt-2">
+          <legend className="text-sm mb-1">Escarénois ?</legend>
+          <label className="mr-4 inline-flex items-center gap-2">
+            <input type="radio" name="escarenois" value="oui" /> Oui
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="radio" name="escarenois" value="non" defaultChecked /> Non
+          </label>
+        </fieldset>
+
+        <div className="pt-2">
+          <button
+            type="submit"
+            disabled={places.length === 0}
+            className="rounded-lg bg-emerald-600 px-5 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            Envoyer
+          </button>
+        </div>
       </form>
     </main>
   );
