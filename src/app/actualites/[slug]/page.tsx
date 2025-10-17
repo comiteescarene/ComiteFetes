@@ -8,6 +8,7 @@ export default async function PostPage({
 }: {
   params: { slug: string }; // <- objet simple, PAS de Promise
 }) {
+  // Si Sanity pas configuré en prod, on rend un fallback (évite le build cassé)
   if (!process.env.SANITY_PROJECT_ID) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-8">
@@ -17,12 +18,11 @@ export default async function PostPage({
         </Link>
       </main>
     );
-  }
+    }
 
   const query = groq`*[_type=="post" && slug.current == $slug][0]{
     title, date, excerpt, body
   }`;
-
   const post = await sanityClient.fetch(query, { slug: params.slug });
 
   if (!post) {
@@ -43,7 +43,7 @@ export default async function PostPage({
       </div>
       <h1 className="mt-1 text-3xl font-bold">{post.title}</h1>
       {post.excerpt ? <p className="mt-3 text-neutral-700">{post.excerpt}</p> : null}
-      {/* Remplace ce <pre> par ton renderer PortableText si tu en as un */}
+      {/* Remplace par ton renderer PortableText si tu en as un */}
       {post.body ? (
         <pre className="mt-6 whitespace-pre-wrap rounded-xl border bg-white p-4">
           {JSON.stringify(post.body, null, 2)}

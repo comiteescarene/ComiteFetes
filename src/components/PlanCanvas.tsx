@@ -2,11 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import type { KeyboardEvent } from "react";
-import type {
-  PlanItem,
-  PositionedLabel,
-  PositionedMatrix,
-} from "@/data/planCanvas";
+import type { PositionedLabel, PositionedMatrix } from "@/data/planCanvas";
 import { PLAN_ITEMS } from "@/data/planCanvas";
 import clsx from "clsx";
 
