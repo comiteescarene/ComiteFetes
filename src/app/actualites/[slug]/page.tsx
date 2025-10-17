@@ -2,9 +2,9 @@ import { groq } from "next-sanity";
 import { notFound } from "next/navigation";
 import { sanityClient } from "../../../../sanity/client";
 
-type Params = { slug: string };
+type RouteParams = { slug: string };
 
-export default async function PostPage({ params }: { params: Params }) {
+export default async function PostPage({ params }: { params: RouteParams }) {
   const { slug } = params;
 
   const post = await sanityClient.fetch(
@@ -22,23 +22,26 @@ export default async function PostPage({ params }: { params: Params }) {
         {post.date ? new Date(post.date).toLocaleDateString("fr-FR") : ""}
       </p>
       <h1 className="mt-1 text-3xl font-bold">{post.title}</h1>
-      {post.excerpt ? <p className="mt-3 text-neutral-700">{post.excerpt}</p> : null}
-      {/* Affiche le contenu réel si tu as un portable text / renderer */}
+      {post.excerpt ? (
+        <p className="mt-3 text-neutral-700">{post.excerpt}</p>
+      ) : null}
+
+      {/* TODO: rendre 'body' si tu utilises PortableText */}
     </main>
   );
 }
 
-/** Build statique des pages d'actus (facultatif) */
-export async function generateStaticParams(): Promise<Params[]> {
+/** (Optionnel) Génération statique des slugs pour ISR/SSG */
+export async function generateStaticParams(): Promise<RouteParams[]> {
   try {
     const slugs: { slug: { current: string } }[] = await sanityClient.fetch(
       groq`*[_type=="post" && defined(slug.current)].slug`
     );
-    return slugs.map(s => ({ slug: s.slug.current }));
+    return slugs.map((s) => ({ slug: s.slug.current }));
   } catch {
     return [];
   }
 }
 
-/** Revalidation ISR (facultatif) */
-export const revalidate = 60; // revalidate toutes les 60s
+/** (Optionnel) revalidation ISR */
+export const revalidate = 60;
