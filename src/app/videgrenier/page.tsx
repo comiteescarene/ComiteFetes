@@ -1,23 +1,22 @@
-import ReservationClient from "./ReservationClient";
+import { sanityClient } from "../../../sanity/client";
+import { groq } from "next-sanity";
+import VideGrenierClient from "./VideGrenierClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function VideGrenierPage() {
-  const base = process.env.NEXT_PUBLIC_BASE_URL ?? "";
-  const res = await fetch(`${base}/api/reservations`, { cache: "no-store" }).catch(
-    () => undefined
+export default async function Page() {
+  // places déjà prises (2025)
+  const taken = await sanityClient.fetch<string[]>(
+    groq`*[_type=="reservation" && year=="2025" && status in ["pending","confirmed"]].places[]`
   );
-  const data = await res?.json().catch(() => ({ ids: [] })) ?? { ids: [] };
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       <h1 className="text-2xl font-bold tracking-tight">Vide-grenier 2025</h1>
-      <p className="mt-1 text-neutral-600">
-        Cliquez sur une ou plusieurs cases libres, puis « Réserver ».
-      </p>
+      <p className="mt-1 text-neutral-600">Cliquez sur une ou plusieurs cases libres, puis « Réserver ».</p>
 
       <div className="mt-6">
-        <ReservationClient initialReserved={data.ids ?? []} />
+        <VideGrenierClient reserved={taken ?? []} />
       </div>
     </main>
   );

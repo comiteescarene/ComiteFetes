@@ -1,27 +1,22 @@
 "use client";
 
-import { useMemo, useState, useRef, useEffect } from "react";
-import type { KeyboardEvent } from "react";
+import { useMemo, useState, useRef, useEffect, type KeyboardEvent } from "react";
 import type { PositionedLabel, PositionedMatrix } from "@/data/planCanvas";
 import { PLAN_ITEMS } from "@/data/planCanvas";
 import clsx from "clsx";
 
 type Props = {
-  /** Identifiants déjà réservés (ex: "B3", "C10", "F14") */
-  reservedIds?: Set<string> | string[];
-  /** Callback à la soumission de la sélection */
+  reservedIds?: Set<string> | string[]; // ex: ["B3","C10"]
   onSubmit?: (ids: string[]) => void;
 };
 
-const CELL = 36; // taille d'une case en px
-const GAP = 8; // espacement en px
-const MAX_COLS = 36; // marge large pour la grille
+const CELL = 36;
+const GAP = 8;
+const MAX_COLS = 36;
 const MAX_ROWS = 48;
 
-/** Flèches autorisées pour la navigation clavier */
 type ArrowKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
-
-const DIR: Record<ArrowKey, readonly [dx: number, dy: number]> = {
+const DIR: Record<ArrowKey, readonly [number, number]> = {
   ArrowUp: [0, -1],
   ArrowDown: [0, 1],
   ArrowLeft: [-1, 0],
@@ -30,7 +25,6 @@ const DIR: Record<ArrowKey, readonly [dx: number, dy: number]> = {
 const isArrowKey = (k: string): k is ArrowKey => k in DIR;
 
 export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
-  // normaliser reservedIds en Set MAJUSCULE
   const reserved = useMemo(() => {
     const arr = Array.isArray(reservedIds)
       ? reservedIds
@@ -41,10 +35,9 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
   }, [reservedIds]);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [scale, setScale] = useState(1); // zoom
+  const [scale, setScale] = useState(1);
   const regionRef = useRef<HTMLDivElement | null>(null);
 
-  // annonce ARIA du nombre de places sélectionnées
   const [ariaMessage, setAriaMessage] = useState("");
   useEffect(() => {
     const n = selected.size;
@@ -69,29 +62,18 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
   const zoomIn = () => setScale((s) => Math.min(1.6, +(s + 0.1).toFixed(2)));
   const zoomOut = () => setScale((s) => Math.max(0.8, +(s - 0.1).toFixed(2)));
   const zoomReset = () => setScale(1);
-
   const handleSubmit = () => onSubmit?.(Array.from(selected));
 
-  // navigation clavier basique (flèches) : on mémorise le dernier focus
   const lastFocus = useRef<HTMLButtonElement | null>(null);
 
-  // helper : retrouver un bouton à une coordonnée (x,y)
-  const getButtonAt = (nx: number, ny: number): HTMLButtonElement | null => {
-    return (
-      regionRef.current?.querySelector<HTMLButtonElement>(
-        `button[data-x="${nx}"][data-y="${ny}"]`
-      ) ?? null
-    );
-  };
+  const getButtonAt = (nx: number, ny: number): HTMLButtonElement | null =>
+    regionRef.current?.querySelector<HTMLButtonElement>(
+      `button[data-x="${nx}"][data-y="${ny}"]`
+    ) ?? null;
 
-  const onCellKeyDown = (
-    e: KeyboardEvent<HTMLButtonElement>,
-    x: number,
-    y: number
-  ) => {
+  const onCellKeyDown = (e: KeyboardEvent<HTMLButtonElement>, x: number, y: number) => {
     if (!regionRef.current) return;
     if (!isArrowKey(e.key)) return;
-
     e.preventDefault();
     const [dx, dy] = DIR[e.key];
     const next = getButtonAt(x + dx, y + dy);
@@ -107,31 +89,15 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <Legend />
         <div className="flex items-center gap-1">
-          <button
-            onClick={zoomOut}
-            className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50"
-          >
-            −
-          </button>
-          <button
-            onClick={zoomReset}
-            className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50"
-          >
-            100%
-          </button>
-          <button
-            onClick={zoomIn}
-            className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50"
-          >
-            +
-          </button>
+          <button onClick={zoomOut} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">−</button>
+          <button onClick={zoomReset} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">100%</button>
+          <button onClick={zoomIn} className="rounded-md border px-2 py-1 text-sm hover:bg-neutral-50">+</button>
         </div>
       </div>
 
       {/* Zone scrollable + zoom */}
       <div className="relative max-h-[70vh] overflow-auto rounded-2xl border bg-white/60 p-4 shadow-sm">
         <div className="origin-top-left" style={{ transform: `scale(${scale})` }}>
-          {/* Grille CSS (colonnes/lignes) */}
           <div
             ref={regionRef}
             role="grid"
@@ -142,7 +108,6 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
               gridTemplateColumns: `repeat(${MAX_COLS}, ${CELL}px)`,
               gridTemplateRows: `repeat(${MAX_ROWS}, ${CELL}px)`,
               gap: `${GAP}px`,
-              // fond “papier millimétré” discret
               backgroundImage:
                 "linear-gradient(to right, rgba(0,0,0,.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,.03) 1px, transparent 1px)",
               backgroundSize: `${CELL + GAP}px ${CELL + GAP}px`,
@@ -198,9 +163,7 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
             >
               Tout effacer
             </button>
-            <span className="sr-only" aria-live="polite">
-              {ariaMessage}
-            </span>
+            <span className="sr-only" aria-live="polite">{ariaMessage}</span>
           </div>
 
           <button
@@ -221,8 +184,6 @@ export default function PlanCanvas({ reservedIds, onSubmit }: Props) {
   );
 }
 
-/* ----------- Sous-composants ----------- */
-
 function Legend() {
   return (
     <div className="flex items-center gap-3 text-sm">
@@ -230,12 +191,10 @@ function Legend() {
         <span className="inline-block h-4 w-6 rounded-md border bg-white" /> Libre
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="inline-block h-4 w-6 rounded-md border bg-neutral-200" />{" "}
-        Occupé
+        <span className="inline-block h-4 w-6 rounded-md border bg-neutral-200" /> Occupé
       </span>
       <span className="inline-flex items-center gap-2">
-        <span className="inline-block h-4 w-6 rounded-md border bg-emerald-600" />{" "}
-        Ma sélection
+        <span className="inline-block h-4 w-6 rounded-md border bg-emerald-600" /> Ma sélection
       </span>
     </div>
   );
@@ -252,11 +211,7 @@ function Matrix({
   reserved: Set<string>;
   selected: Set<string>;
   onToggle: (id: string) => void;
-  onKeyDown: (
-    e: KeyboardEvent<HTMLButtonElement>,
-    x: number,
-    y: number
-  ) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLButtonElement>, x: number, y: number) => void;
 }) {
   const x0 = mat.x;
   const y0 = mat.y;
@@ -269,81 +224,65 @@ function Matrix({
         gridColumnEnd: `span ${mat.columns.length}`,
       }}
     >
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: `repeat(${mat.columns.length}, ${CELL}px)`,
-          gap: `${GAP}px`,
-        }}
-      >
-        {mat.columns.map((col, ci) => {
-          return (
-            <div
-              key={`col-${ci}`}
-              className="grid"
-              style={{
-                gridTemplateRows: `repeat(${col.length}, ${CELL}px)`,
-                gap: `${GAP}px`,
-              }}
-            >
-              {col.map((cell, ri) => {
-                const x = x0 + ci;
-                const y = y0 + ri;
+      <div className="grid" style={{ gridTemplateColumns: `repeat(${mat.columns.length}, ${CELL}px)`, gap: `${GAP}px` }}>
+        {mat.columns.map((col, ci) => (
+          <div key={`col-${ci}`} className="grid" style={{ gridTemplateRows: `repeat(${col.length}, ${CELL}px)`, gap: `${GAP}px` }}>
+            {col.map((cell, ri) => {
+              const x = x0 + ci;
+              const y = y0 + ri;
 
-                if (typeof cell !== "string") {
-                  // label dans une matrice (rare), non cliquable
-                  const c = cell as { type: "label"; text: string };
-                  return (
-                    <div
-                      key={`lab-${ci}-${ri}`}
-                      className="pointer-events-none select-none rounded-lg border bg-neutral-100/80 text-center text-xs italic text-neutral-600"
-                      style={{ lineHeight: `${CELL - 8}px` }}
-                    >
-                      {c.text}
-                    </div>
-                  );
-                }
-
-                const id = cell.toUpperCase();
-                const isReserved = reserved.has(id);
-                const isSelected = selected.has(id);
-
+              if (typeof cell !== "string") {
+                const c = cell as { type: "label"; text: string };
                 return (
-                  <button
-                    key={`cell-${ci}-${ri}-${id}`}
-                    data-x={x}
-                    data-y={y}
-                    type="button"
-                    title={isReserved ? `${id} — Occupé` : `${id} — Libre`}
-                    aria-pressed={isSelected}
-                    aria-disabled={isReserved}
-                    disabled={isReserved}
-                    onClick={() => onToggle(id)}
-                    onKeyDown={(e) => onKeyDown(e, x, y)}
-                    className={clsx(
-                      "rounded-lg border text-sm leading-none shadow-sm outline-none transition",
-                      "focus-visible:ring-2 focus-visible:ring-emerald-500",
-                      isReserved
-                        ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-                        : isSelected
-                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                        : "bg-white text-neutral-800 hover:bg-emerald-50"
-                    )}
-                    style={{
-                      width: CELL,
-                      height: CELL,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
+                  <div
+                    key={`lab-${ci}-${ri}`}
+                    className="pointer-events-none select-none rounded-lg border bg-neutral-100/80 text-center text-xs italic text-neutral-600"
+                    style={{ lineHeight: `${CELL - 8}px` }}
                   >
-                    {id}
-                  </button>
+                    {c.text}
+                  </div>
                 );
-              })}
-            </div>
-          );
-        })}
+              }
+
+              const id = cell.toUpperCase();
+              const isReserved = reserved.has(id);
+              const isSelected = selected.has(id);
+
+              return (
+                <button
+                  key={`cell-${ci}-${ri}-${id}`}
+                  data-x={x}
+                  data-y={y}
+                  type="button"
+                  title={isReserved ? `${id} — Occupé` : `${id} — Libre`}
+                  aria-pressed={isSelected}
+                  aria-disabled={isReserved}
+                  disabled={isReserved}
+                  onClick={() => onToggle(id)}
+                  onKeyDown={(e) => onKeyDown(e, x, y)}
+                  className={clsx(
+                    "rounded-lg border text-sm leading-none shadow-sm outline-none transition",
+                    "focus-visible:ring-2 focus-visible:ring-emerald-500",
+                    isReserved
+                      ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+                      : isSelected
+                      ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                      : "bg-white text-neutral-800 hover:bg-emerald-50"
+                  )}
+                  style={{
+                    width: CELL,
+                    height: CELL,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {id}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );
