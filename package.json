@@ -11,14 +11,14 @@
   "dependencies": {
     "@portabletext/react": "^4.0.3",
     "@sanity/client": "^7.11.2",
-    "@sanity/vision": "^4.10.2",
+    "@sanity/vision": "^4.10.3",
     "clsx": "^2.1.1",
     "groq": "^4.10.2",
     "next": "15.5.4",
     "next-sanity": "^11.4.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "sanity": "^4.10.2"
+    "sanity": "^4.10.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

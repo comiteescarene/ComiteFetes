@@ -1,118 +1,86 @@
 "use client";
+import {useEffect, useMemo, useState} from "react";
+import PlanCanvas from "@/components/PlanCanvas";
 
-import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
-
-type ReservationBody = {
-  nom: string;
-  prenom: string;
-  tel: string;
-  email: string;
-  escarenois: boolean;
-  year: string;
-  places: string[];
+type EventDTO = {
+  _id: string;
+  title: string;
+  date?: string;
+  allowedPlaces?: string[];
+  blockedPlaces?: string[];
 };
 
 export default function ReserverClient() {
-  const sp = useSearchParams();
-  // accepte ?places=H1,G1 ou ?ids=H1,G1
-  const places = useMemo(() => {
-    const raw = sp.get("places") ?? sp.get("ids") ?? "";
-    return raw.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
-  }, [sp]);
+  const [evt, setEvt] = useState<EventDTO|null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string| null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
 
-  const [sending, setSending] = useState(false);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/events/current");
+      const js = await res.json();
+      if (!res.ok || !js.ok) { setError(js.error || "Aucun évènement en ligne"); setEvt(null); setLoading(false); return; }
+      setEvt(js.event);
+      setLoading(false);
+    })();
+  }, []);
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (places.length === 0) {
-      alert("Aucune place sélectionnée.");
-      return;
-    }
-    setSending(true);
+  const reservedSet = useMemo(() => new Set<string>(), []); // tu peux précharger si tu veux
 
-    const fd = new FormData(e.currentTarget);
-    const body: ReservationBody = {
-      nom: String(fd.get("nom") ?? ""),
-      prenom: String(fd.get("prenom") ?? ""),
-      tel: String(fd.get("tel") ?? ""),
-      email: String(fd.get("email") ?? ""),
-      escarenois: String(fd.get("escarenois") ?? "non") === "oui",
-      year: "2025",
-      places,
+  if (loading) return <p>Chargement…</p>;
+  if (error || !evt) return <p className="text-red-600">{error ?? "Aucun évènement en ligne"}</p>;
+
+  const allowed = new Set((evt.allowedPlaces || []).map(s => s.toUpperCase()));
+  const blocked = new Set((evt.blockedPlaces || []).map(s => s.toUpperCase()));
+
+  const onSubmit = async (ids: string[]) => {
+    if (!ids.length) return;
+    setSelected(ids);
+    const fd = {
+      places: ids,
+      nom:  (document.getElementById("nom") as HTMLInputElement)?.value || "",
+      prenom: (document.getElementById("prenom") as HTMLInputElement)?.value || "",
+      tel: (document.getElementById("tel") as HTMLInputElement)?.value || "",
+      email: (document.getElementById("email") as HTMLInputElement)?.value || "",
+      escarenois: (document.querySelector<HTMLInputElement>('input[name="esc"]:checked')?.value === "oui"),
     };
-
     const res = await fetch("/api/reservations", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(fd),
     });
-
-    let payload: any = {};
-    try { payload = await res.json(); } catch {}
-
-    if (res.status === 409) {
-      alert(`Ces places viennent d'être prises : ${(payload.conflicts || []).join(", ")}.`);
-      setSending(false);
-      return;
-    }
-    if (!res.ok) {
-      alert(payload?.error || "Erreur lors de l’enregistrement.");
-      setSending(false);
-      return;
-    }
-
-    alert("Réservation enregistrée ✅");
-    setSending(false);
+    const js = await res.json();
+    if (!res.ok || !js.ok) { alert(js.error || "Erreur lors de l’enregistrement."); return; }
+    alert("Réservation enregistrée !");
   };
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-4">
-      <p className="text-sm text-neutral-600">
-        Places choisies : {places.length ? places.join(", ") : "aucune"}
-      </p>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-sm">Nom</span>
-          <input name="nom" required className="mt-1 w-full rounded-lg border px-3 py-2" />
-        </label>
-        <label className="block">
-          <span className="text-sm">Prénom</span>
-          <input name="prenom" required className="mt-1 w-full rounded-lg border px-3 py-2" />
-        </label>
+    <div>
+      <div className="rounded-xl border p-3 mb-4 bg-white">
+        <div className="text-sm text-neutral-600">Évènement en ligne :</div>
+        <div className="font-semibold">{evt.title} {evt.date ? `— ${new Date(evt.date).toLocaleDateString("fr-FR")}` : ""}</div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-sm">Téléphone</span>
-          <input name="tel" required className="mt-1 w-full rounded-lg border px-3 py-2" />
-        </label>
-        <label className="block">
-          <span className="text-sm">Email</span>
-          <input name="email" type="email" required className="mt-1 w-full rounded-lg border px-3 py-2" />
-        </label>
-      </div>
+      <PlanCanvas
+        reservedIds={reservedSet}
+        onSubmit={onSubmit}
+        // si tu veux limiter à allowed, passe allowed/blocked en props et bloque côté component
+      />
 
-      <fieldset className="mt-2">
-        <legend className="text-sm mb-1">Escarénois ?</legend>
-        <label className="mr-4 inline-flex items-center gap-2">
-          <input type="radio" name="escarenois" value="oui" /> Oui
-        </label>
-        <label className="inline-flex items-center gap-2">
-          <input type="radio" name="escarenois" value="non" defaultChecked /> Non
-        </label>
-      </fieldset>
-
-      <div className="pt-2">
-        <button
-          type="submit"
-          disabled={sending || places.length === 0}
-          className="rounded-lg bg-emerald-600 px-5 py-2 font-semibold text-white disabled:opacity-50"
-        >
-          {sending ? "Envoi…" : "Envoyer"}
-        </button>
-      </div>
-    </form>
+      {/* mini formulaire (à remplacer par le tien) */}
+      <form className="mt-6 grid gap-3">
+        <input id="nom" placeholder="Nom" className="border p-2 rounded"/>
+        <input id="prenom" placeholder="Prénom" className="border p-2 rounded"/>
+        <input id="tel" placeholder="Téléphone" className="border p-2 rounded"/>
+        <input id="email" placeholder="Email" className="border p-2 rounded"/>
+        <div className="flex items-center gap-4">
+          <label><input type="radio" name="esc" value="oui" /> Escarénois</label>
+          <label><input type="radio" name="esc" value="non" defaultChecked /> Extérieur</label>
+        </div>
+      </form>
+    </div>
   );
 }
